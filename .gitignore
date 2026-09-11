@@ -1,0 +1,30 @@
+# Rust & Cargo build artifacts
+target/
+**/target/
+**/*.rs.bk
+
+# Node & Package Managers
+node_modules/
+**/node_modules/
+web/dist/
+dist/
+.pnpm-store/
+*.log
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS & Editor generated files
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Agent & temporary scratch dirs
+.agents/
+scratch/
