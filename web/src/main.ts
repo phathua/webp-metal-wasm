@@ -2,7 +2,13 @@ import './style.css';
 import { SmoothnessMonitor } from './monitor/smoothness';
 import { GpuPreprocessor } from './gpu/preprocessor';
 import { WasmBridge } from './worker/wasm-bridge';
+import { AppLogger } from './monitor/logger';
 import type { EncodeRequest, EncodeResponse, WebmMuxRequest, WebmMuxResponse } from './worker/protocol';
+
+// Khởi tạo AppLogger
+const logger = AppLogger.get();
+logger.info(`Trình duyệt: ${navigator.userAgent.includes('Safari') ? 'Safari / WebKit' : navigator.userAgent}`);
+logger.info(`Màn hình: ${window.innerWidth}x${window.innerHeight} (DPR: ${window.devicePixelRatio})`);
 
 // UI Elements
 const dropZone = document.getElementById('drop-zone') as HTMLDivElement;
@@ -43,11 +49,13 @@ monitor.start((metrics) => {
   jankDisplay.textContent = `${metrics.jankCount}`;
 });
 
-// Detect SIMD support for UI badge
+// Detect SIMD support for UI badge & log
 if (WasmBridge.isSimdSupported()) {
   engineModeBadge.textContent = 'SIMD128 (Apple Silicon)';
+  logger.wasm('Phát hiện tập lệnh SIMD128 - Đã nạp webp_engine_simd.wasm (Tối ưu Apple Silicon)');
 } else {
   engineModeBadge.textContent = 'Scalar Fallback';
+  logger.wasm('Thiết bị không có SIMD128 - Sử dụng webp_engine_scalar.wasm');
 }
 
 // Initialize Web Worker
@@ -121,14 +129,18 @@ function handleFile(file: File) {
   sizeBefore.textContent = `Gốc: ${formatBytes(file.size)}`;
   heavierWarning.style.display = 'none';
 
+  logger.info(`Đã chọn ảnh: ${file.name} (${formatBytes(file.size)})`);
+
   // Tự động nhận diện ảnh JPEG để gợi ý Lossy
   const isJpeg = file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name);
   if (isJpeg) {
     btnLossy.click();
     modeHint.innerHTML = '⚡ <strong>Đã tự động chuyển sang Lossy (VP8)</strong>: Phát hiện định dạng JPEG. Nén Lossy sẽ giảm sâu 50-80% dung lượng mà giữ nguyên độ nét!';
+    logger.info('Tự động chọn chế độ Lossy (VP8) cho ảnh JPEG.');
   } else {
     btnLossless.click();
     modeHint.innerHTML = '💡 <strong>Đã chọn Lossless (VP8L)</strong>: Định dạng ảnh PNG/đồ họa sẽ được bảo toàn nguyên vẹn 100% chất lượng và kênh trong suốt.';
+    logger.info('Đã chọn chế độ Lossless (VP8L) cho ảnh PNG/đồ họa.');
   }
 }
 
@@ -141,9 +153,11 @@ btnCompress.addEventListener('click', async () => {
   heavierWarning.style.display = 'none';
 
   try {
+    logger.metal(`Bắt đầu giải mã Metal GPU cho ảnh ${selectedFile.name}...`);
     // 1. GPU Preprocessing (Metal via createImageBitmap + OffscreenCanvas)
     const preprocess = await GpuPreprocessor.processImage(selectedFile);
     dimensionsBadge.textContent = `${preprocess.width} × ${preprocess.height} px`;
+    logger.metal(`Metal GPU xử lý xong: ${preprocess.width}x${preprocess.height}px. Chuyển dữ liệu sang Web Worker (Zero-Copy)...`);
 
     // 2. Dispatch to Web Worker with Transferable ArrayBuffer (Zero-Copy)
     const requestId = `req_${Date.now()}`;
@@ -184,6 +198,7 @@ btnCompress.addEventListener('click', async () => {
             savingsDisplay.textContent = `-${savedRatio}%`;
             savingsDisplay.style.color = 'var(--accent-cyan)';
             heavierWarning.style.display = 'none';
+            logger.info(`Nén WebP ${isLossless ? 'Lossless' : `Lossy (Q=${quality})`} thành công: ${formatBytes(selectedFile!.size)} ➜ ${formatBytes(msg.compressedSize)} (giảm ${savedRatio}%) trong ${msg.durationMs}ms`);
           } else {
             const increaseRatio = Math.round((msg.compressedSize / selectedFile!.size - 1) * 100);
             savingsDisplay.textContent = `+${increaseRatio}% (Tăng)`;
@@ -191,10 +206,12 @@ btnCompress.addEventListener('click', async () => {
             if (isLossless) {
               heavierWarning.style.display = 'block';
             }
+            logger.warn(`WebP Lossless lớn hơn ảnh gốc (+${increaseRatio}%). Khuyến nghị chuyển sang Lossy.`);
           }
 
           btnDownload.style.display = 'block';
         } else {
+          logger.error(`Nén thất bại: ${msg.error || 'Lỗi không xác định'}`);
           alert(`Nén thất bại: ${msg.error || 'Lỗi không xác định'}`);
         }
       }
@@ -204,7 +221,9 @@ btnCompress.addEventListener('click', async () => {
   } catch (err: unknown) {
     btnCompress.disabled = false;
     btnCompress.textContent = '🚀 Nén Thử Lại';
-    alert(`Lỗi tiền xử lý ảnh: ${err instanceof Error ? err.message : String(err)}`);
+    const errText = err instanceof Error ? err.message : String(err);
+    logger.error(`Lỗi tiền xử lý ảnh: ${errText}`);
+    alert(`Lỗi tiền xử lý ảnh: ${errText}`);
   }
 });
 
