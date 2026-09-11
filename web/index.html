@@ -86,9 +86,46 @@
           <span class="info-pill" id="dimensions-badge">Chưa có ảnh</span>
         </div>
 
+        <!-- View Mode Switcher -->
+        <div class="view-mode-bar" id="view-mode-bar" style="display: none;">
+          <button class="view-mode-btn active" id="btn-mode-slider">↔️ Soi Kéo Trượt</button>
+          <button class="view-mode-btn" id="btn-mode-side">📑 Xem Song Song</button>
+          <button class="view-mode-btn" id="btn-mode-single">🔍 Xem Đơn Lẻ</button>
+        </div>
+
         <div class="preview-container">
           <span class="placeholder-text" id="preview-placeholder">Chưa có dữ liệu ảnh nén</span>
+          
+          <!-- Single View -->
           <img id="preview-img" class="preview-img" style="display: none;" alt="Compressed WebP Preview" />
+
+          <!-- Interactive Comparison Slider -->
+          <div class="comparison-slider-box" id="comparison-slider-box">
+            <!-- Background: WebP Result (Right) -->
+            <img id="slider-img-after" alt="WebP Result" />
+            <span class="compare-badge right">WebP</span>
+
+            <!-- Foreground: Original Image (Left) -->
+            <div class="img-overlay" id="slider-overlay">
+              <img id="slider-img-before" alt="Original Image" />
+              <span class="compare-badge left">Ảnh Gốc</span>
+            </div>
+
+            <!-- Draggable Divider Handle -->
+            <div class="slider-handle-btn" id="slider-handle">⬌</div>
+          </div>
+
+          <!-- Side by Side View -->
+          <div class="side-by-side-box" id="side-by-side-box">
+            <div class="side-item">
+              <img id="side-img-before" alt="Original" />
+              <span class="side-label" id="side-label-before">Ảnh Gốc</span>
+            </div>
+            <div class="side-item">
+              <img id="side-img-after" alt="WebP" />
+              <span class="side-label" id="side-label-after">Ảnh WebP</span>
+            </div>
+          </div>
         </div>
 
         <div style="display: flex; justify-content: space-between; margin-top: 15px; font-size: 13px; color: var(--text-secondary);">

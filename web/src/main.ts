@@ -36,11 +36,31 @@ const engineModeBadge = document.getElementById('engine-mode-badge') as HTMLElem
 const btnTestWebm = document.getElementById('btn-test-webm') as HTMLButtonElement;
 const webmTestResult = document.getElementById('webm-test-result') as HTMLElement;
 
+// Comparison elements
+const viewModeBar = document.getElementById('view-mode-bar') as HTMLElement;
+const btnModeSlider = document.getElementById('btn-mode-slider') as HTMLButtonElement;
+const btnModeSide = document.getElementById('btn-mode-side') as HTMLButtonElement;
+const btnModeSingle = document.getElementById('btn-mode-single') as HTMLButtonElement;
+
+const comparisonSliderBox = document.getElementById('comparison-slider-box') as HTMLElement;
+const sliderOverlay = document.getElementById('slider-overlay') as HTMLElement;
+const sliderHandle = document.getElementById('slider-handle') as HTMLElement;
+const sliderImgBefore = document.getElementById('slider-img-before') as HTMLImageElement;
+const sliderImgAfter = document.getElementById('slider-img-after') as HTMLImageElement;
+
+const sideBySideBox = document.getElementById('side-by-side-box') as HTMLElement;
+const sideImgBefore = document.getElementById('side-img-before') as HTMLImageElement;
+const sideImgAfter = document.getElementById('side-img-after') as HTMLImageElement;
+const sideLabelBefore = document.getElementById('side-label-before') as HTMLElement;
+const sideLabelAfter = document.getElementById('side-label-after') as HTMLElement;
+
 // State
 let selectedFile: File | null = null;
 let isLossless = true;
 let quality = 80;
 let outputBlobUrl: string | null = null;
+let originalBlobUrl: string | null = null;
+let currentViewMode: 'slider' | 'side' | 'single' = 'slider';
 
 // Initialize Smoothness Monitor (60/120fps tracking)
 const monitor = new SmoothnessMonitor();
@@ -90,6 +110,87 @@ qualitySlider.addEventListener('input', () => {
   qualityVal.textContent = `${quality}%`;
 });
 
+// View mode toggle
+btnModeSlider.addEventListener('click', () => {
+  currentViewMode = 'slider';
+  renderViewMode();
+});
+
+btnModeSide.addEventListener('click', () => {
+  currentViewMode = 'side';
+  renderViewMode();
+});
+
+btnModeSingle.addEventListener('click', () => {
+  currentViewMode = 'single';
+  renderViewMode();
+});
+
+function renderViewMode() {
+  btnModeSlider.classList.toggle('active', currentViewMode === 'slider');
+  btnModeSide.classList.toggle('active', currentViewMode === 'side');
+  btnModeSingle.classList.toggle('active', currentViewMode === 'single');
+
+  if (currentViewMode === 'slider') {
+    comparisonSliderBox.style.display = 'block';
+    sideBySideBox.style.display = 'none';
+    previewImg.style.display = 'none';
+    requestAnimationFrame(updateSliderOverlayWidth);
+  } else if (currentViewMode === 'side') {
+    comparisonSliderBox.style.display = 'none';
+    sideBySideBox.style.display = 'grid';
+    previewImg.style.display = 'none';
+  } else {
+    comparisonSliderBox.style.display = 'none';
+    sideBySideBox.style.display = 'none';
+    previewImg.style.display = 'block';
+  }
+}
+
+function updateSliderOverlayWidth() {
+  const boxWidth = comparisonSliderBox.getBoundingClientRect().width;
+  if (boxWidth > 0) {
+    sliderImgBefore.style.width = `${boxWidth}px`;
+  }
+}
+
+let isDragging = false;
+function setSliderPos(clientX: number) {
+  const rect = comparisonSliderBox.getBoundingClientRect();
+  if (rect.width <= 0) return;
+  const offsetX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+  const pct = (offsetX / rect.width) * 100;
+  sliderOverlay.style.width = `${pct}%`;
+  sliderHandle.style.left = `${pct}%`;
+}
+
+comparisonSliderBox.addEventListener('pointerdown', (e) => {
+  isDragging = true;
+  try { comparisonSliderBox.setPointerCapture(e.pointerId); } catch {}
+  setSliderPos(e.clientX);
+});
+
+comparisonSliderBox.addEventListener('pointermove', (e) => {
+  if (isDragging) {
+    setSliderPos(e.clientX);
+  }
+});
+
+comparisonSliderBox.addEventListener('pointerup', (e) => {
+  isDragging = false;
+  try { comparisonSliderBox.releasePointerCapture(e.pointerId); } catch {}
+});
+
+comparisonSliderBox.addEventListener('pointercancel', () => {
+  isDragging = false;
+});
+
+window.addEventListener('resize', () => {
+  if (currentViewMode === 'slider') {
+    updateSliderOverlayWidth();
+  }
+});
+
 // File selection
 dropZone.addEventListener('click', () => fileInput.click());
 
@@ -128,6 +229,9 @@ function handleFile(file: File) {
   btnCompress.textContent = `🚀 Nén ${file.name}`;
   sizeBefore.textContent = `Gốc: ${formatBytes(file.size)}`;
   heavierWarning.style.display = 'none';
+
+  if (originalBlobUrl) URL.revokeObjectURL(originalBlobUrl);
+  originalBlobUrl = URL.createObjectURL(file);
 
   logger.info(`Đã chọn ảnh: ${file.name} (${formatBytes(file.size)})`);
 
@@ -186,9 +290,19 @@ btnCompress.addEventListener('click', async () => {
           if (outputBlobUrl) URL.revokeObjectURL(outputBlobUrl);
           outputBlobUrl = URL.createObjectURL(blob);
 
+          // Cập nhật các chế độ xem so sánh (Slider, Song song, Đơn lẻ)
           previewImg.src = outputBlobUrl;
-          previewImg.style.display = 'block';
+          sliderImgBefore.src = originalBlobUrl || outputBlobUrl;
+          sliderImgAfter.src = outputBlobUrl;
+          sideImgBefore.src = originalBlobUrl || outputBlobUrl;
+          sideImgAfter.src = outputBlobUrl;
+
+          sideLabelBefore.textContent = `Ảnh Gốc: ${formatBytes(selectedFile!.size)}`;
+          sideLabelAfter.textContent = `WebP: ${formatBytes(msg.compressedSize)}`;
+
           previewPlaceholder.style.display = 'none';
+          viewModeBar.style.display = 'flex';
+          renderViewMode();
 
           sizeAfter.textContent = `WebP: ${formatBytes(msg.compressedSize)}`;
           durationDisplay.textContent = `${msg.durationMs} ms`;
