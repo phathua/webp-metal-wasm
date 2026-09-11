@@ -3,6 +3,7 @@ import { SmoothnessMonitor } from './monitor/smoothness';
 import { GpuPreprocessor } from './gpu/preprocessor';
 import { WasmBridge } from './worker/wasm-bridge';
 import { AppLogger } from './monitor/logger';
+import { ColorHistogramCard } from './color/histogram-card';
 import type { EncodeRequest, EncodeResponse, WebmMuxRequest, WebmMuxResponse } from './worker/protocol';
 
 // Khởi tạo AppLogger
@@ -53,6 +54,9 @@ const sideImgBefore = document.getElementById('side-img-before') as HTMLImageEle
 const sideImgAfter = document.getElementById('side-img-after') as HTMLImageElement;
 const sideLabelBefore = document.getElementById('side-label-before') as HTMLElement;
 const sideLabelAfter = document.getElementById('side-label-after') as HTMLElement;
+
+// Khởi tạo ColorHistogramCard
+const colorCard = new ColorHistogramCard('color-analysis-card');
 
 // State
 let selectedFile: File | null = null;
@@ -229,6 +233,7 @@ function handleFile(file: File) {
   btnCompress.textContent = `🚀 Nén ${file.name}`;
   sizeBefore.textContent = `Gốc: ${formatBytes(file.size)}`;
   heavierWarning.style.display = 'none';
+  colorCard.hide();
 
   if (originalBlobUrl) URL.revokeObjectURL(originalBlobUrl);
   originalBlobUrl = URL.createObjectURL(file);
@@ -324,6 +329,16 @@ btnCompress.addEventListener('click', async () => {
           }
 
           btnDownload.style.display = 'block';
+
+          // Phân tích và so sánh phổ màu sắc trước & sau nén
+          if (originalBlobUrl && outputBlobUrl) {
+            logger.info('Bắt đầu phân tích phổ màu sắc (Histogram & Delta-E)...');
+            colorCard.update(originalBlobUrl, outputBlobUrl).then(() => {
+              logger.info('Phân tích phổ màu hoàn tất.');
+            }).catch((err) => {
+              logger.error(`Lỗi phân tích màu sắc: ${err}`);
+            });
+          }
         } else {
           logger.error(`Nén thất bại: ${msg.error || 'Lỗi không xác định'}`);
           alert(`Nén thất bại: ${msg.error || 'Lỗi không xác định'}`);
