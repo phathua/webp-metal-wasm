@@ -9,6 +9,9 @@ const dropZone = document.getElementById('drop-zone') as HTMLDivElement;
 const fileInput = document.getElementById('file-input') as HTMLInputElement;
 const btnLossless = document.getElementById('btn-lossless') as HTMLButtonElement;
 const btnLossy = document.getElementById('btn-lossy') as HTMLButtonElement;
+const modeHint = document.getElementById('mode-hint') as HTMLElement;
+const heavierWarning = document.getElementById('heavier-warning') as HTMLElement;
+const btnSwitchLossy = document.getElementById('btn-switch-lossy') as HTMLButtonElement;
 const qualityContainer = document.getElementById('quality-container') as HTMLDivElement;
 const qualitySlider = document.getElementById('quality-slider') as HTMLInputElement;
 const qualityVal = document.getElementById('quality-val') as HTMLElement;
@@ -56,6 +59,8 @@ btnLossless.addEventListener('click', () => {
   btnLossless.classList.add('active');
   btnLossy.classList.remove('active');
   qualityContainer.style.display = 'none';
+  modeHint.innerHTML = '💡 <strong>Chế độ Lossless (VP8L)</strong>: Bảo toàn nguyên vẹn 100% điểm ảnh và độ trong suốt. Thích hợp nhất cho <strong>ảnh PNG, logo, icon</strong>.';
+  heavierWarning.style.display = 'none';
 });
 
 btnLossy.addEventListener('click', () => {
@@ -63,6 +68,13 @@ btnLossy.addEventListener('click', () => {
   btnLossy.classList.add('active');
   btnLossless.classList.remove('active');
   qualityContainer.style.display = 'block';
+  modeHint.innerHTML = '⚡ <strong>Chế độ Lossy (VP8)</strong>: Giảm 50% - 85% dung lượng với chất lượng mắt thường không phân biệt được. Thích hợp nhất cho <strong>ảnh JPEG, ảnh chụp, bản đồ</strong>.';
+  heavierWarning.style.display = 'none';
+});
+
+btnSwitchLossy.addEventListener('click', () => {
+  btnLossy.click();
+  btnCompress.click();
 });
 
 qualitySlider.addEventListener('input', () => {
@@ -107,6 +119,17 @@ function handleFile(file: File) {
   btnCompress.disabled = false;
   btnCompress.textContent = `🚀 Nén ${file.name}`;
   sizeBefore.textContent = `Gốc: ${formatBytes(file.size)}`;
+  heavierWarning.style.display = 'none';
+
+  // Tự động nhận diện ảnh JPEG để gợi ý Lossy
+  const isJpeg = file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name);
+  if (isJpeg) {
+    btnLossy.click();
+    modeHint.innerHTML = '⚡ <strong>Đã tự động chuyển sang Lossy (VP8)</strong>: Phát hiện định dạng JPEG. Nén Lossy sẽ giảm sâu 50-80% dung lượng mà giữ nguyên độ nét!';
+  } else {
+    btnLossless.click();
+    modeHint.innerHTML = '💡 <strong>Đã chọn Lossless (VP8L)</strong>: Định dạng ảnh PNG/đồ họa sẽ được bảo toàn nguyên vẹn 100% chất lượng và kênh trong suốt.';
+  }
 }
 
 // Compression process
@@ -115,6 +138,7 @@ btnCompress.addEventListener('click', async () => {
 
   btnCompress.disabled = true;
   btnCompress.textContent = '⏳ Đang nén (Web Worker)...';
+  heavierWarning.style.display = 'none';
 
   try {
     // 1. GPU Preprocessing (Metal via createImageBitmap + OffscreenCanvas)
@@ -155,8 +179,19 @@ btnCompress.addEventListener('click', async () => {
           sizeAfter.textContent = `WebP: ${formatBytes(msg.compressedSize)}`;
           durationDisplay.textContent = `${msg.durationMs} ms`;
 
-          const savedRatio = Math.max(0, Math.round((1 - msg.compressedSize / selectedFile!.size) * 100));
-          savingsDisplay.textContent = `-${savedRatio}%`;
+          if (msg.compressedSize <= selectedFile!.size) {
+            const savedRatio = Math.round((1 - msg.compressedSize / selectedFile!.size) * 100);
+            savingsDisplay.textContent = `-${savedRatio}%`;
+            savingsDisplay.style.color = 'var(--accent-cyan)';
+            heavierWarning.style.display = 'none';
+          } else {
+            const increaseRatio = Math.round((msg.compressedSize / selectedFile!.size - 1) * 100);
+            savingsDisplay.textContent = `+${increaseRatio}% (Tăng)`;
+            savingsDisplay.style.color = '#f87171';
+            if (isLossless) {
+              heavierWarning.style.display = 'block';
+            }
+          }
 
           btnDownload.style.display = 'block';
         } else {
