@@ -1,0 +1,56 @@
+{
+  "solid_1x1": {
+    "file": "solid_1x1.png",
+    "width": 1,
+    "height": 1,
+    "hasAlpha": false,
+    "rawRgba": [
+      255,
+      0,
+      0,
+      255
+    ]
+  },
+  "transparent_1x1": {
+    "file": "transparent_1x1.png",
+    "width": 1,
+    "height": 1,
+    "hasAlpha": true,
+    "rawRgba": [
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "alpha_gradient_64x64": {
+    "file": "alpha_gradient_64x64.png",
+    "width": 64,
+    "height": 64,
+    "hasAlpha": true,
+    "samplePixel": [
+      0,
+      0,
+      128,
+      0
+    ]
+  },
+  "photo_sample_128x128": {
+    "file": "photo_sample_128x128.png",
+    "width": 128,
+    "height": 128,
+    "hasAlpha": false
+  },
+  "corrupt_truncated": {
+    "file": "corrupt_truncated.bin",
+    "bytes": 16
+  },
+  "corrupt_random": {
+    "file": "corrupt_random.bin",
+    "bytes": 1024
+  },
+  "exif_rotated_mock": {
+    "file": "exif_rotated_mock.bin",
+    "orientation": 6
+  }
+}
