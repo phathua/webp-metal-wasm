@@ -1,6 +1,9 @@
 ﻿import { ColorAnalyzer, ColorAnalysisResult, ChannelHistogram, AiReportContext } from './analyzer';
+import { AppLogger } from '../monitor/logger';
 
 export type HistogramChannel = 'all' | 'r' | 'g' | 'b' | 'luma';
+
+const logger = AppLogger.get();
 
 export class ColorHistogramCard {
   private container: HTMLElement;
@@ -20,7 +23,13 @@ export class ColorHistogramCard {
   private hoverTooltip: HTMLElement;
   private btnCopyJson: HTMLButtonElement;
   private btnDownloadJson: HTMLButtonElement;
+  private btnViewJson: HTMLButtonElement;
   private exportHint: HTMLElement;
+
+  // Modal elements
+  private modalOverlay: HTMLElement | null = null;
+  private modalTextarea: HTMLTextAreaElement | null = null;
+  private modalNotice: HTMLElement | null = null;
 
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
@@ -98,8 +107,11 @@ export class ColorHistogramCard {
         <button class="export-btn" id="btn-copy-color-json">
           📋 Sao Chép JSON (Cho AI Phân Tích)
         </button>
+        <button class="export-btn secondary" id="btn-view-color-json">
+          👁️ Xem / Soi JSON
+        </button>
         <button class="export-btn secondary" id="btn-download-color-json">
-          💾 Tải File Báo Cáo JSON
+          💾 Tải File JSON
         </button>
         <span class="export-hint" id="color-export-hint"></span>
       </div>
@@ -119,9 +131,16 @@ export class ColorHistogramCard {
     this.hoverTooltip = this.container.querySelector('#histogram-tooltip') as HTMLElement;
     this.btnCopyJson = this.container.querySelector('#btn-copy-color-json') as HTMLButtonElement;
     this.btnDownloadJson = this.container.querySelector('#btn-download-color-json') as HTMLButtonElement;
+    this.btnViewJson = this.container.querySelector('#btn-view-color-json') as HTMLButtonElement;
     this.exportHint = this.container.querySelector('#color-export-hint') as HTMLElement;
 
+    // Modal elements
+    this.modalOverlay = document.getElementById('json-modal-overlay');
+    this.modalTextarea = document.getElementById('json-modal-textarea') as HTMLTextAreaElement;
+    this.modalNotice = document.getElementById('json-modal-notice');
+
     this.setupEvents();
+    this.setupModalEvents();
   }
 
   private setupEvents() {
@@ -165,23 +184,13 @@ export class ColorHistogramCard {
     this.canvas.addEventListener('mouseleave', hideTooltip);
     this.canvas.addEventListener('touchend', hideTooltip);
 
-    // AI JSON Export: Copy to Clipboard
-    this.btnCopyJson.addEventListener('click', async () => {
-      if (!this.currentResult) return;
-      try {
-        const report = this.getReportObject();
-        const jsonStr = JSON.stringify(report, null, 2);
-        await navigator.clipboard.writeText(jsonStr);
-        this.btnCopyJson.textContent = '✅ Đã Sao Chép Vào Clipboard!';
-        this.btnCopyJson.classList.add('copied');
-        setTimeout(() => {
-          this.btnCopyJson.textContent = '📋 Sao Chép JSON (Cho AI Phân Tích)';
-          this.btnCopyJson.classList.remove('copied');
-        }, 2500);
-      } catch (err) {
-        console.error('Không thể sao chép vào clipboard:', err);
-        this.exportHint.textContent = 'Lỗi sao chép! Hãy thử nút Tải File JSON.';
-      }
+    // AI JSON Export: Copy to Clipboard (Multi-tier with deep iOS logging)
+    this.btnCopyJson.addEventListener('click', () => this.handleCopyClipboard());
+
+    // AI JSON Export: View in Modal
+    this.btnViewJson.addEventListener('click', () => {
+      const jsonStr = JSON.stringify(this.getReportObject(), null, 2);
+      this.openModal(jsonStr, 'Xem trực tiếp dữ liệu JSON. Bạn có thể bấm "Chọn Tất Cả" để chép trên iOS Safari.');
     });
 
     // AI JSON Export: Download File
@@ -197,8 +206,10 @@ export class ColorHistogramCard {
         a.download = `color-analysis-${namePart}-${Date.now()}.json`;
         a.click();
         URL.revokeObjectURL(url);
+        logger.info('[Clipboard] Đã tải xuống file JSON báo cáo màu sắc thành công.');
       } catch (err) {
-        console.error('Không thể tải file JSON:', err);
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error(`[Clipboard] Không thể tải file JSON: ${msg}`);
       }
     });
 
@@ -208,6 +219,147 @@ export class ColorHistogramCard {
       this.draw();
     });
     this.resizeCanvas();
+  }
+
+  private setupModalEvents() {
+    if (!this.modalOverlay) return;
+
+    // Close buttons
+    const btnClose = document.getElementById('btn-close-json-modal');
+    const btnDismiss = document.getElementById('btn-modal-dismiss');
+    btnClose?.addEventListener('click', () => this.closeModal());
+    btnDismiss?.addEventListener('click', () => this.closeModal());
+
+    this.modalOverlay.addEventListener('click', (e) => {
+      if (e.target === this.modalOverlay) this.closeModal();
+    });
+
+    // Select All button
+    const btnSelectAll = document.getElementById('btn-modal-select-all') as HTMLButtonElement | null;
+    btnSelectAll?.addEventListener('click', () => {
+      if (!this.modalTextarea) return;
+      this.modalTextarea.focus();
+      this.modalTextarea.select();
+      this.modalTextarea.setSelectionRange(0, this.modalTextarea.value.length);
+      logger.info('[Modal] Đã chọn toàn bộ văn bản JSON trong textarea.');
+      try {
+        const ok = document.execCommand('copy');
+        if (ok) {
+          btnSelectAll.textContent = '✅ Đã Chép!';
+          setTimeout(() => { btnSelectAll.textContent = '✨ Chọn Tất Cả (Select All)'; }, 2000);
+          logger.info('[Modal] document.execCommand copy thành công từ modal.');
+        }
+      } catch (e) {
+        logger.warn(`[Modal] execCommand: ${e}`);
+      }
+    });
+
+    // Modal Download
+    const btnModalDownload = document.getElementById('btn-modal-download');
+    btnModalDownload?.addEventListener('click', () => {
+      this.btnDownloadJson.click();
+    });
+  }
+
+  /**
+   * Bộ xử lý sao chép Clipboard đa tầng tối ưu riêng cho iOS Safari
+   */
+  private async handleCopyClipboard() {
+    if (!this.currentResult) return;
+    const report = this.getReportObject();
+    const jsonStr = JSON.stringify(report, null, 2);
+
+    const isSecure = window.isSecureContext;
+    const hasNavClip = typeof navigator !== 'undefined' && 'clipboard' in navigator && !!navigator.clipboard;
+
+    logger.info(`[Clipboard] Bắt đầu sao chép JSON (${jsonStr.length} ký tự). isSecureContext=${isSecure}, hasClipboardAPI=${hasNavClip}`);
+
+    let copied = false;
+    let failReason = '';
+
+    // TẦNG 1: Async Clipboard API (khi chạy trên HTTPS hoặc localhost)
+    if (hasNavClip && isSecure) {
+      try {
+        await navigator.clipboard.writeText(jsonStr);
+        copied = true;
+        logger.info('[Clipboard] ✅ Sao chép thành công qua navigator.clipboard.writeText');
+      } catch (err: unknown) {
+        failReason = err instanceof Error ? err.message : String(err);
+        logger.warn(`[Clipboard] navigator.clipboard.writeText thất bại: ${failReason}. Thử tiếp Tầng 2...`);
+      }
+    } else {
+      if (!isSecure) {
+        failReason = 'Trang web truy cập qua HTTP mạng nội bộ (192.168.x.x), iOS Safari mặc định khóa navigator.clipboard';
+        logger.warn(`[Clipboard] ⚠️ ${failReason}`);
+      } else {
+        failReason = 'Trình duyệt không hỗ trợ navigator.clipboard';
+        logger.warn(`[Clipboard] ⚠️ ${failReason}`);
+      }
+    }
+
+    // TẦNG 2: Fallback textarea execCommand tương thích iOS Safari
+    if (!copied) {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = jsonStr;
+        // Các thuộc tính quan trọng để iOS Safari không zoom hay chặn
+        textArea.style.position = 'fixed';
+        textArea.style.top = '0';
+        textArea.style.left = '-9999px';
+        textArea.style.width = '2em';
+        textArea.style.height = '2em';
+        textArea.style.fontSize = '16px';
+        textArea.setAttribute('readonly', '');
+        textArea.contentEditable = 'true';
+
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        textArea.setSelectionRange(0, jsonStr.length);
+
+        const ok = document.execCommand('copy');
+        document.body.removeChild(textArea);
+
+        if (ok) {
+          copied = true;
+          logger.info('[Clipboard] ✅ Sao chép thành công qua document.execCommand fallback!');
+        } else {
+          logger.warn('[Clipboard] ⚠️ document.execCommand trả về false (bị Safari từ chối quyền copy ngầm).');
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error(`[Clipboard] ❌ Lỗi execCommand fallback: ${msg}`);
+      }
+    }
+
+    // Kết quả
+    if (copied) {
+      this.btnCopyJson.textContent = '✅ Đã Sao Chép Vào Clipboard!';
+      this.btnCopyJson.classList.add('copied');
+      this.exportHint.textContent = 'Đã chép thành công! Bạn có thể dán ngay vào khung chat AI.';
+      setTimeout(() => {
+        this.btnCopyJson.textContent = '📋 Sao Chép JSON (Cho AI Phân Tích)';
+        this.btnCopyJson.classList.remove('copied');
+      }, 3000);
+    } else {
+      // TẦNG 3: Mở khung Modal Sheet trực quan để người dùng chọn và chép trên iOS
+      logger.info('[Clipboard] Mở khung Modal JSON trực tiếp trên màn hình để bạn bấm chọn và chép.');
+      this.openModal(
+        jsonStr,
+        `💡 Do truy cập qua HTTP (mạng LAN), Safari giới hạn quyền copy ngầm. Bạn hãy bấm nút "✨ Chọn Tất Cả" bên dưới để chép nhanh!`
+      );
+    }
+  }
+
+  private openModal(jsonStr: string, noticeText: string) {
+    if (!this.modalOverlay || !this.modalTextarea) return;
+    this.modalTextarea.value = jsonStr;
+    if (this.modalNotice) this.modalNotice.textContent = noticeText;
+    this.modalOverlay.style.display = 'flex';
+  }
+
+  private closeModal() {
+    if (this.modalOverlay) this.modalOverlay.style.display = 'none';
   }
 
   private getReportObject(): Record<string, unknown> {
@@ -270,7 +422,8 @@ export class ColorHistogramCard {
       this.resizeCanvas();
       this.draw();
     } catch (e) {
-      console.error('Lỗi khi phân tích màu sắc:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      logger.error(`[ColorCard] Lỗi khi phân tích màu sắc: ${msg}`);
       this.verdictBanner.textContent = '⚠️ Không thể phân tích màu sắc của ảnh';
       this.verdictBanner.className = 'color-verdict-banner error';
     }
@@ -278,6 +431,7 @@ export class ColorHistogramCard {
 
   public hide() {
     this.container.style.display = 'none';
+    this.closeModal();
   }
 
   /**

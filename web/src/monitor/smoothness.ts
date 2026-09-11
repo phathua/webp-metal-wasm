@@ -42,14 +42,18 @@ export class SmoothnessMonitor {
           this.frameDeltas.shift();
         }
 
-        // Detect janks: >22ms (> 1.3x 60fps interval) or >12ms for 120Hz
-        if (delta > 22) {
-          this.droppedFrames++;
-          this.jankCount++;
-        }
-
         const avgDelta = this.frameDeltas.reduce((a, b) => a + b, 0) / this.frameDeltas.length;
         this.currentFps = Math.round(1000 / avgDelta);
+
+        // Adaptive jank threshold: only count as jank if frame time is 1.5x longer than rolling average (min 8ms buffer)
+        // This properly supports 30fps (Low Power Mode), 60fps, and 120fps (ProMotion) without false alarms.
+        if (this.frameDeltas.length >= 10) {
+          const jankThreshold = Math.max(avgDelta * 1.5, avgDelta + 8);
+          if (delta > jankThreshold) {
+            this.droppedFrames++;
+            this.jankCount++;
+          }
+        }
 
         if (onTick) {
           onTick({

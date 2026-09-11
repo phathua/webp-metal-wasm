@@ -179,6 +179,25 @@
     </div>
   </div>
 
+  <!-- Modal Sheet for JSON Viewer & Copy Fallback on iOS -->
+  <div class="json-modal-overlay" id="json-modal-overlay" style="display: none;">
+    <div class="json-modal-dialog">
+      <div class="json-modal-header">
+        <strong style="color: #38bdf8;">📄 Báo Cáo JSON Phân Tích (Cho AI)</strong>
+        <button class="json-modal-close" id="btn-close-json-modal">✕</button>
+      </div>
+      <div class="json-modal-notice" id="json-modal-notice">
+        💡 Do đang truy cập qua địa chỉ mạng LAN (HTTP), Safari yêu cầu người dùng bấm chọn trực tiếp văn bản để sao chép.
+      </div>
+      <textarea id="json-modal-textarea" readonly spellcheck="false"></textarea>
+      <div class="json-modal-footer">
+        <button class="export-btn" id="btn-modal-select-all">✨ Chọn Tất Cả (Select All)</button>
+        <button class="export-btn secondary" id="btn-modal-download">💾 Tải File JSON</button>
+        <button class="export-btn secondary" id="btn-modal-dismiss">Đóng</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
