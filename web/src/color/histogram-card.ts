@@ -1,4 +1,4 @@
-import { ColorAnalyzer, ColorAnalysisResult, ChannelHistogram } from './analyzer';
+﻿import { ColorAnalyzer, ColorAnalysisResult, ChannelHistogram, AiReportContext } from './analyzer';
 
 export type HistogramChannel = 'all' | 'r' | 'g' | 'b' | 'luma';
 
@@ -7,6 +7,7 @@ export class ColorHistogramCard {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private currentResult: ColorAnalysisResult | null = null;
+  private currentContext: AiReportContext | null = null;
   private activeChannel: HistogramChannel = 'all';
 
   // UI elements
@@ -17,6 +18,9 @@ export class ColorHistogramCard {
   private metricMaxDiff: HTMLElement;
   private verdictBanner: HTMLElement;
   private hoverTooltip: HTMLElement;
+  private btnCopyJson: HTMLButtonElement;
+  private btnDownloadJson: HTMLButtonElement;
+  private exportHint: HTMLElement;
 
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
@@ -88,6 +92,17 @@ export class ColorHistogramCard {
           💡 <em>Hai đường càng trùng khít lên nhau, màu sắc nén ra càng giống nguyên bản 100%.</em>
         </div>
       </div>
+
+      <!-- AI JSON Export Actions -->
+      <div class="histogram-export-bar">
+        <button class="export-btn" id="btn-copy-color-json">
+          📋 Sao Chép JSON (Cho AI Phân Tích)
+        </button>
+        <button class="export-btn secondary" id="btn-download-color-json">
+          💾 Tải File Báo Cáo JSON
+        </button>
+        <span class="export-hint" id="color-export-hint"></span>
+      </div>
     `;
 
     this.canvas = this.container.querySelector('#color-histogram-canvas') as HTMLCanvasElement;
@@ -102,6 +117,9 @@ export class ColorHistogramCard {
     this.metricMaxDiff = this.container.querySelector('#color-maxdiff-val') as HTMLElement;
     this.verdictBanner = this.container.querySelector('#color-verdict-banner') as HTMLElement;
     this.hoverTooltip = this.container.querySelector('#histogram-tooltip') as HTMLElement;
+    this.btnCopyJson = this.container.querySelector('#btn-copy-color-json') as HTMLButtonElement;
+    this.btnDownloadJson = this.container.querySelector('#btn-download-color-json') as HTMLButtonElement;
+    this.exportHint = this.container.querySelector('#color-export-hint') as HTMLElement;
 
     this.setupEvents();
   }
@@ -147,12 +165,66 @@ export class ColorHistogramCard {
     this.canvas.addEventListener('mouseleave', hideTooltip);
     this.canvas.addEventListener('touchend', hideTooltip);
 
+    // AI JSON Export: Copy to Clipboard
+    this.btnCopyJson.addEventListener('click', async () => {
+      if (!this.currentResult) return;
+      try {
+        const report = this.getReportObject();
+        const jsonStr = JSON.stringify(report, null, 2);
+        await navigator.clipboard.writeText(jsonStr);
+        this.btnCopyJson.textContent = '✅ Đã Sao Chép Vào Clipboard!';
+        this.btnCopyJson.classList.add('copied');
+        setTimeout(() => {
+          this.btnCopyJson.textContent = '📋 Sao Chép JSON (Cho AI Phân Tích)';
+          this.btnCopyJson.classList.remove('copied');
+        }, 2500);
+      } catch (err) {
+        console.error('Không thể sao chép vào clipboard:', err);
+        this.exportHint.textContent = 'Lỗi sao chép! Hãy thử nút Tải File JSON.';
+      }
+    });
+
+    // AI JSON Export: Download File
+    this.btnDownloadJson.addEventListener('click', () => {
+      if (!this.currentResult) return;
+      try {
+        const report = this.getReportObject();
+        const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const namePart = (this.currentContext?.fileName || 'image').replace(/\.[^/.]+$/, '');
+        a.download = `color-analysis-${namePart}-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('Không thể tải file JSON:', err);
+      }
+    });
+
     // Responsive Canvas Resize
     window.addEventListener('resize', () => {
       this.resizeCanvas();
       this.draw();
     });
     this.resizeCanvas();
+  }
+
+  private getReportObject(): Record<string, unknown> {
+    if (!this.currentResult) return {};
+    const fallbackCtx: AiReportContext = {
+      fileName: 'unknown.jpg',
+      originalSizeBytes: 0,
+      compressedSizeBytes: 0,
+      dimensions: { width: 0, height: 0 },
+      isLossless: false,
+      quality: 80,
+      durationMs: 0,
+      hasHdr: false,
+      hdrReason: 'Standard SDR',
+      hdrBoostEnabled: false,
+    };
+    return ColorAnalyzer.buildAiReport(this.currentResult, this.currentContext || fallbackCtx);
   }
 
   private resizeCanvas() {
@@ -169,9 +241,10 @@ export class ColorHistogramCard {
   /**
    * Cập nhật kết quả phân tích và vẽ biểu đồ
    */
-  public async update(originalSrc: string, compressedSrc: string) {
+  public async update(originalSrc: string, compressedSrc: string, context?: AiReportContext) {
     this.container.style.display = 'block';
     this.scoreBadge.textContent = 'Đang phân tích...';
+    if (context) this.currentContext = context;
 
     try {
       const result = await ColorAnalyzer.analyze(originalSrc, compressedSrc);

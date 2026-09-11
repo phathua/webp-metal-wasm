@@ -69,6 +69,23 @@
             <input type="range" id="quality-slider" min="1" max="100" value="80" />
           </div>
 
+          <!-- HDR Tone Mapping & Vivid Boost Toggle -->
+          <div class="hdr-toggle-box" id="hdr-toggle-box">
+            <div class="hdr-header">
+              <span class="hdr-title">
+                <span>✨ Tối Ưu Màu Sống Động HDR</span>
+                <span class="hdr-badge-auto" id="hdr-badge-auto" style="display: none;">Tự động phát hiện</span>
+              </span>
+              <label class="hdr-switch">
+                <input type="checkbox" id="hdr-switch-input" />
+                <span class="hdr-slider"></span>
+              </label>
+            </div>
+            <p class="hdr-desc" id="hdr-desc-text">
+              Tự động bù sắc độ & tương phản cho ảnh chụp iPhone (HEIF/Display P3) khi chuyển sang WebP SDR, giúp ảnh rực rỡ như ảnh gốc.
+            </p>
+          </div>
+
           <button class="btn" id="btn-compress" disabled>🚀 Bắt Đầu Nén</button>
 
           <div class="warning-banner" id="heavier-warning">

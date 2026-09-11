@@ -11,15 +11,76 @@ export interface PreprocessResult {
   rgbaBuffer: ArrayBuffer;
 }
 
+export interface PreprocessOptions {
+  enableHdrBoost?: boolean;
+}
+
+export interface HdrDetectionResult {
+  hasHdr: boolean;
+  reason: string;
+  isHeif: boolean;
+  isAppleCamera: boolean;
+  isWideGamutP3: boolean;
+}
+
 export class GpuPreprocessor {
   public static readonly MAX_SAFE_DIMENSION = 4096;
+
+  /**
+   * Phát hiện ảnh chụp có chứa thông số Apple Smart HDR, dải màu Display P3 hoặc Gain Map.
+   */
+  public static async detectHdr(file: File): Promise<HdrDetectionResult> {
+    const isHeif = file.type === 'image/heic' || file.type === 'image/heif' || /\.heic$/i.test(file.name) || /\.heif$/i.test(file.name);
+    const isAppleCamera = /^IMG_(\d+|E\d+)/i.test(file.name) || isHeif;
+    const isHdrDisplay = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(dynamic-range: high)').matches;
+
+    let hasGainMapOrP3 = false;
+    let reason = '';
+
+    try {
+      const slice = file.slice(0, 65536);
+      const buffer = await slice.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      const text = new TextDecoder('latin1').decode(bytes);
+
+      if (text.includes('Display P3') || text.includes('display-p3') || text.includes('Apple Computer, Inc.')) {
+        hasGainMapOrP3 = true;
+        reason = 'Phát hiện dải màu mở rộng Apple Display P3';
+      } else if (text.includes('hdrgm') || text.includes('gainmap') || text.includes('GainMap') || text.includes('Apple_HDR')) {
+        hasGainMapOrP3 = true;
+        reason = 'Phát hiện lớp bản đồ tăng sáng Apple Smart HDR Gain Map';
+      } else if (isHeif) {
+        hasGainMapOrP3 = true;
+        reason = 'Ảnh chụp HEIF/HEIC tiêu chuẩn iPhone hỗ trợ Smart HDR';
+      }
+    } catch {
+      // Fallback
+    }
+
+    const hasHdr = isHeif || hasGainMapOrP3 || (isAppleCamera && isHdrDisplay);
+    if (!reason) {
+      if (hasHdr) {
+        reason = 'Phát hiện ảnh chụp từ iPhone với cấu hình màu mở rộng HDR';
+      } else {
+        reason = 'Ảnh tiêu chuẩn SDR thông thường (sRGB)';
+      }
+    }
+
+    return {
+      hasHdr,
+      reason,
+      isHeif,
+      isAppleCamera,
+      isWideGamutP3: hasGainMapOrP3 || isHeif,
+    };
+  }
 
   /**
    * Decodes an image file or blob using hardware accelerated createImageBitmap
    * with automatic EXIF orientation preservation, scales to safe dimensions,
    * extracts raw RGBA pixels, and immediately destroys the canvas backing store.
    */
-  public static async processImage(blob: Blob): Promise<PreprocessResult> {
+  public static async processImage(blob: Blob, options: PreprocessOptions = {}): Promise<PreprocessResult> {
     // 1. Hardware decode via Metal on iOS Safari
     let bitmap: ImageBitmap;
     try {
@@ -59,7 +120,13 @@ export class GpuPreprocessor {
       throw new Error('Failed to get 2D canvas context for GPU preprocessing');
     }
 
+    // Áp dụng bù sắc độ & tương phản cho ảnh HDR nếu được bật
+    if (options.enableHdrBoost) {
+      ctx.filter = 'contrast(1.05) saturate(1.14) brightness(1.02)';
+    }
+
     ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+    ctx.filter = 'none'; // Khôi phục bộ lọc mặc định
     bitmap.close(); // Immediate release of hardware bitmap texture
 
     // 4. Extract RGBA buffer

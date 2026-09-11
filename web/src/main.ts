@@ -4,6 +4,7 @@ import { GpuPreprocessor } from './gpu/preprocessor';
 import { WasmBridge } from './worker/wasm-bridge';
 import { AppLogger } from './monitor/logger';
 import { ColorHistogramCard } from './color/histogram-card';
+import type { AiReportContext } from './color/analyzer';
 import type { EncodeRequest, EncodeResponse, WebmMuxRequest, WebmMuxResponse } from './worker/protocol';
 
 // Khởi tạo AppLogger
@@ -43,6 +44,12 @@ const btnModeSlider = document.getElementById('btn-mode-slider') as HTMLButtonEl
 const btnModeSide = document.getElementById('btn-mode-side') as HTMLButtonElement;
 const btnModeSingle = document.getElementById('btn-mode-single') as HTMLButtonElement;
 
+// HDR UI elements
+const hdrToggleBox = document.getElementById('hdr-toggle-box') as HTMLElement;
+const hdrSwitchInput = document.getElementById('hdr-switch-input') as HTMLInputElement;
+const hdrBadgeAuto = document.getElementById('hdr-badge-auto') as HTMLElement;
+const hdrDescText = document.getElementById('hdr-desc-text') as HTMLElement;
+
 const comparisonSliderBox = document.getElementById('comparison-slider-box') as HTMLElement;
 const sliderOverlay = document.getElementById('slider-overlay') as HTMLElement;
 const sliderHandle = document.getElementById('slider-handle') as HTMLElement;
@@ -65,6 +72,9 @@ let quality = 80;
 let outputBlobUrl: string | null = null;
 let originalBlobUrl: string | null = null;
 let currentViewMode: 'slider' | 'side' | 'single' = 'slider';
+let detectedHdr = false;
+let hdrReason = '';
+let enableHdrBoost = false;
 
 // Initialize Smoothness Monitor (60/120fps tracking)
 const monitor = new SmoothnessMonitor();
@@ -227,7 +237,14 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function handleFile(file: File) {
+// Listener công tắc HDR
+hdrSwitchInput.addEventListener('change', () => {
+  enableHdrBoost = hdrSwitchInput.checked;
+  hdrToggleBox.classList.toggle('active', enableHdrBoost);
+  logger.info(`Chế độ Tối ưu màu sống động HDR: ${enableHdrBoost ? 'Bật thủ công' : 'Tắt'}`);
+});
+
+async function handleFile(file: File) {
   selectedFile = file;
   btnCompress.disabled = false;
   btnCompress.textContent = `🚀 Nén ${file.name}`;
@@ -240,7 +257,33 @@ function handleFile(file: File) {
 
   logger.info(`Đã chọn ảnh: ${file.name} (${formatBytes(file.size)})`);
 
-  // Tự động nhận diện ảnh JPEG để gợi ý Lossy
+  // 1. Tự động phát hiện ảnh chụp iPhone có HDR / Display P3 để tự bật công tắc
+  try {
+    const hdrInfo = await GpuPreprocessor.detectHdr(file);
+    if (hdrInfo.hasHdr) {
+      detectedHdr = true;
+      hdrReason = hdrInfo.reason;
+      enableHdrBoost = true;
+      hdrSwitchInput.checked = true;
+      hdrBadgeAuto.style.display = 'inline-block';
+      hdrBadgeAuto.textContent = 'Đã tự động bật';
+      hdrToggleBox.classList.add('active');
+      hdrDescText.innerHTML = `🌟 <strong>${hdrInfo.reason}</strong>: Đã tự động kích hoạt bù sắc độ & tương phản để ảnh WebP rực rỡ như ảnh HDR gốc.`;
+      logger.info(`Phát hiện HDR (${hdrInfo.reason}) ➜ Tự động bật Tối ưu màu sống động HDR.`);
+    } else {
+      detectedHdr = false;
+      hdrReason = hdrInfo.reason;
+      enableHdrBoost = false;
+      hdrSwitchInput.checked = false;
+      hdrBadgeAuto.style.display = 'none';
+      hdrToggleBox.classList.remove('active');
+      hdrDescText.textContent = 'Tự động bù sắc độ & tương phản cho ảnh chụp iPhone (HEIF/Display P3) khi chuyển sang WebP SDR, giúp ảnh rực rỡ như ảnh gốc.';
+    }
+  } catch (e) {
+    console.warn('Không thể kiểm tra HDR:', e);
+  }
+
+  // 2. Tự động nhận diện ảnh JPEG để gợi ý Lossy
   const isJpeg = file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name);
   if (isJpeg) {
     btnLossy.click();
@@ -262,9 +305,9 @@ btnCompress.addEventListener('click', async () => {
   heavierWarning.style.display = 'none';
 
   try {
-    logger.metal(`Bắt đầu giải mã Metal GPU cho ảnh ${selectedFile.name}...`);
+    logger.metal(`Bắt đầu giải mã Metal GPU cho ảnh ${selectedFile.name}... ${enableHdrBoost ? '(Áp dụng bù màu rực rỡ HDR)' : ''}`);
     // 1. GPU Preprocessing (Metal via createImageBitmap + OffscreenCanvas)
-    const preprocess = await GpuPreprocessor.processImage(selectedFile);
+    const preprocess = await GpuPreprocessor.processImage(selectedFile, { enableHdrBoost });
     dimensionsBadge.textContent = `${preprocess.width} × ${preprocess.height} px`;
     logger.metal(`Metal GPU xử lý xong: ${preprocess.width}x${preprocess.height}px. Chuyển dữ liệu sang Web Worker (Zero-Copy)...`);
 
@@ -330,11 +373,24 @@ btnCompress.addEventListener('click', async () => {
 
           btnDownload.style.display = 'block';
 
-          // Phân tích và so sánh phổ màu sắc trước & sau nén
+          // Phân tích và so sánh phổ màu sắc trước & sau nén (kèm ngữ cảnh chi tiết cho AI)
           if (originalBlobUrl && outputBlobUrl) {
             logger.info('Bắt đầu phân tích phổ màu sắc (Histogram & Delta-E)...');
-            colorCard.update(originalBlobUrl, outputBlobUrl).then(() => {
-              logger.info('Phân tích phổ màu hoàn tất.');
+            const aiCtx: AiReportContext = {
+              fileName: selectedFile!.name,
+              originalSizeBytes: selectedFile!.size,
+              compressedSizeBytes: msg.compressedSize,
+              dimensions: { width: preprocess.width, height: preprocess.height },
+              isLossless,
+              quality,
+              durationMs: msg.durationMs,
+              hasHdr: detectedHdr,
+              hdrReason,
+              hdrBoostEnabled: enableHdrBoost,
+            };
+
+            colorCard.update(originalBlobUrl, outputBlobUrl, aiCtx).then(() => {
+              logger.info('Phân tích phổ màu hoàn tất. Đã sẵn sàng xuất JSON cho AI.');
             }).catch((err) => {
               logger.error(`Lỗi phân tích màu sắc: ${err}`);
             });
