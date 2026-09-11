@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Pure-Rust WebAssembly WebP & Metal GPU Pipeline</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Pure-Rust WASM • SIMD128 • Apple Metal GPU</span>
+      <h1>WebAssembly WebP & WebM Engine</h1>
+      <p class="subtitle">Nén ảnh WebP (Lossless & Lossy) siêu nhẹ, cách ly luồng Web Worker với bộ nhớ Zero-Copy, duy trì ổn định 60/120fps trên Safari iOS.</p>
+    </header>
+
+    <!-- Real-time Performance & Savings Stats -->
+    <div class="stats-bar">
+      <div class="stat-card">
+        <span class="stat-label">UI Smoothness (ProMotion)</span>
+        <span class="stat-value fps" id="fps-display">60 FPS</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Khung Hình Giật (Janks)</span>
+        <span class="stat-value" id="jank-display">0</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Thời Gian Xử Lý</span>
+        <span class="stat-value" id="duration-display">0 ms</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Tỷ Lệ Giảm Dung Lượng</span>
+        <span class="stat-value savings" id="savings-display">0%</span>
+      </div>
+    </div>
+
+    <!-- Main Workspace Grid -->
+    <div class="main-grid">
+      <!-- Input & Controls -->
+      <div class="card">
+        <div class="card-title">
+          <span>⚙️ Cấu Hình & Tải Ảnh</span>
+          <span class="info-pill" id="engine-mode-badge">SIMD128</span>
+        </div>
+
+        <div class="drop-zone" id="drop-zone">
+          <span class="drop-icon">📁</span>
+          <p><strong>Kéo thả ảnh vào đây</strong> hoặc bấm để chọn</p>
+          <p style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">Hỗ trợ PNG, JPEG, WebP, AVIF, HEIC</p>
+          <input type="file" id="file-input" accept="image/*" style="display: none;" />
+        </div>
+
+        <div class="controls-group">
+          <label class="stat-label">Chế Độ Nén WebP</label>
+          <div class="mode-toggle">
+            <button class="mode-btn active" id="btn-lossless">Lossless (VP8L)</button>
+            <button class="mode-btn" id="btn-lossy">Lossy (VP8)</button>
+          </div>
+
+          <div class="slider-group" id="quality-container" style="display: none;">
+            <div class="slider-header">
+              <span>Chất Lượng (Quality)</span>
+              <strong id="quality-val">80%</strong>
+            </div>
+            <input type="range" id="quality-slider" min="1" max="100" value="80" />
+          </div>
+
+          <button class="btn" id="btn-compress" disabled>🚀 Bắt Đầu Nén</button>
+        </div>
+      </div>
+
+      <!-- Preview & Output -->
+      <div class="card">
+        <div class="card-title">
+          <span>🖼️ Kết Quả Sau Nén</span>
+          <span class="info-pill" id="dimensions-badge">Chưa có ảnh</span>
+        </div>
+
+        <div class="preview-container">
+          <span class="placeholder-text" id="preview-placeholder">Chưa có dữ liệu ảnh nén</span>
+          <img id="preview-img" class="preview-img" style="display: none;" alt="Compressed WebP Preview" />
+        </div>
+
+        <div style="display: flex; justify-content: space-between; margin-top: 15px; font-size: 13px; color: var(--text-secondary);">
+          <span id="size-before">Gốc: -</span>
+          <span id="size-after">WebP: -</span>
+        </div>
+
+        <button class="btn" id="btn-download" style="display: none; background: linear-gradient(135deg, var(--accent-emerald), #059669);">
+          📥 Tải Xuống Ảnh .WebP
+        </button>
+      </div>
+    </div>
+
+    <!-- Future Video Extension Section -->
+    <div class="card video-section">
+      <div class="card-title">
+        <span>🎬 Lộ Trình Video Ngắn: WebM Container Muxer (EBML)</span>
+        <span class="info-pill">WebCodecs Pipeline</span>
+      </div>
+      <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+        Tích hợp sẵn cấu trúc EBML Muxer bằng Rust WASM để đóng gói chuỗi khung hình thành định dạng WebM nhẹ nhàng mà không ép CPU quá tải, kết nối trực tiếp với bộ mã hóa phần cứng VideoToolbox (Metal) trên Safari 16.4+.
+      </p>
+      <div style="margin-top: 15px; display: flex; gap: 10px;">
+        <button class="btn" id="btn-test-webm" style="width: auto; padding: 10px 20px; font-size: 13px;">
+          Kiểm Thử Muxer WebM Header
+        </button>
+        <span id="webm-test-result" style="align-self: center; font-size: 13px; color: var(--accent-emerald);"></span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
