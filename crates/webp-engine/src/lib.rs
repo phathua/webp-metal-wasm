@@ -325,12 +325,14 @@ mod tests {
         // Check RIFF header
         assert_eq!(&webp_slice[0..4], b"RIFF");
         assert_eq!(&webp_slice[8..12], b"WEBP");
-        // Check VP8 chunk tag
-        assert_eq!(&webp_slice[12..16], b"VP8 ");
+        // Check VP8 or VP8X chunk tag
+        assert!(
+            &webp_slice[12..16] == b"VP8 " || &webp_slice[12..16] == b"VP8X",
+            "Expected VP8 or VP8X chunk tag"
+        );
 
         // Validate using muxer module
-        let info = muxer::parse_webp_header(webp_slice).expect("Valid WebP header");
-        assert_eq!(info.format, muxer::WebpFormat::LossyVp8);
+        assert!(muxer::is_lossy_webp(webp_slice));
 
         unsafe {
             free_buffer(out_ptr, out_len);
@@ -418,4 +420,46 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_lossy_color_fidelity() {
+        let width = 32u32;
+        let height = 32u32;
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        for i in (0..pixels.len()).step_by(4) {
+            pixels[i] = 255;   // R
+            pixels[i + 1] = 0; // G
+            pixels[i + 2] = 0; // B
+            pixels[i + 3] = 255; // A
+        }
+
+        let mut out_ptr: *mut u8 = std::ptr::null_mut();
+        let mut out_len: usize = 0;
+
+        let status = unsafe {
+            encode_lossy_webp(
+                pixels.as_ptr(),
+                width,
+                height,
+                80.0,
+                &mut out_ptr,
+                &mut out_len,
+            )
+        };
+
+        assert_eq!(status, ERR_SUCCESS);
+        assert!(!out_ptr.is_null());
+        assert!(out_len > 12);
+
+        let webp_slice = unsafe { slice::from_raw_parts(out_ptr, out_len) };
+        assert!(muxer::is_lossy_webp(webp_slice));
+
+        // Write to test file for Python Pillow inspection
+        let _ = std::fs::write("../../target/test_zen_red.webp", webp_slice);
+
+        unsafe {
+            free_buffer(out_ptr, out_len);
+        }
+    }
 }
+

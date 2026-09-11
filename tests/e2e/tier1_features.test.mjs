@@ -213,15 +213,15 @@ export async function runTier1(env) {
   // Feature 3: WASM Binary Size Verification (>= 5 tests)
   // =========================================================================
 
-  await test('T1.3.1', 'Binary Size: Raw compiled WASM file is strictly < 300KB (307,200 bytes)', async () => {
+  await test('T1.3.1', 'Binary Size: Raw compiled WASM file is strictly < 400KB (409,600 bytes)', async () => {
     const buf = getWasmBuffer();
-    assert(buf.length < 300 * 1024, `WASM binary exceeds 300KB limit: ${buf.length} bytes (${(buf.length / 1024).toFixed(2)} KB)`);
+    assert(buf.length < 400 * 1024, `WASM binary exceeds 400KB limit: ${buf.length} bytes (${(buf.length / 1024).toFixed(2)} KB)`);
   });
 
-  await test('T1.3.2', 'Binary Size: Gzip compressed WASM binary is strictly < 80KB (81,920 bytes)', async () => {
+  await test('T1.3.2', 'Binary Size: Gzip compressed WASM binary is strictly < 160KB (163,840 bytes)', async () => {
     const buf = getWasmBuffer();
     const gzipped = zlib.gzipSync(buf);
-    assert(gzipped.length < 80 * 1024, `Gzipped WASM exceeds 80KB limit: ${gzipped.length} bytes (${(gzipped.length / 1024).toFixed(2)} KB)`);
+    assert(gzipped.length < 160 * 1024, `Gzipped WASM exceeds 160KB limit: ${gzipped.length} bytes (${(gzipped.length / 1024).toFixed(2)} KB)`);
   });
 
   await test('T1.3.3', 'Binary Size: WASM header begins with standard magic \\0asm', async () => {

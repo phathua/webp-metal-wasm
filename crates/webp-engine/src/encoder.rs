@@ -1,8 +1,6 @@
 //! WebP Encoding Dispatcher (Lossless VP8L and Lossy VP8)
 
-use webp_rust::encoder::{
-    encode_lossless_rgba_to_webp, encode_lossy_rgba_to_webp_with_config, LossyEncodingConfig,
-};
+use zenwebp::{EncodeRequest, LosslessConfig, LossyConfig, PixelLayout};
 
 /// Error conditions during encoding operations
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +38,9 @@ pub fn encode_lossless(
         });
     }
 
-    encode_lossless_rgba_to_webp(width as usize, height as usize, rgba)
+    let config = LosslessConfig::new();
+    EncodeRequest::lossless(&config, rgba, PixelLayout::Rgba8, width, height)
+        .encode()
         .map_err(|_| WebpEncodeError::EncodingFailed)
 }
 
@@ -75,12 +75,9 @@ pub fn encode_lossy(
         });
     }
 
-    let config = LossyEncodingConfig {
-        quality,
-        ..Default::default()
-    };
-
-    encode_lossy_rgba_to_webp_with_config(width as usize, height as usize, rgba, &config)
+    let config = LossyConfig::new().with_quality(quality);
+    EncodeRequest::lossy(&config, rgba, PixelLayout::Rgba8, width, height)
+        .encode()
         .map_err(|_| WebpEncodeError::EncodingFailed)
 }
 

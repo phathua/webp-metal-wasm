@@ -103,7 +103,7 @@ fn test_integration_lossy_opaque_and_alpha() {
     assert_eq!(res, ERR_SUCCESS);
     let webp_slice = unsafe { slice::from_raw_parts(out_ptr, out_len) };
     let info = parse_webp_header(webp_slice).expect("Valid WebP header");
-    assert_eq!(info.format, WebpFormat::LossyVp8);
+    assert!(info.format == WebpFormat::LossyVp8 || info.format == WebpFormat::ExtendedVp8x);
     assert!(is_lossy_webp(webp_slice));
     unsafe {
         free_buffer(out_ptr, out_len);
